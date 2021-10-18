@@ -1,0 +1,99 @@
+RELICENSING
+===========
+
+The terms set forth in this file apply only to works (the "covered
+work") where a copy of this file, or a link to it, has been included
+in the original distribution by the author, either in a way that
+applies to the work as a whole (such as a file in the work's top level
+directory) or in the headers of individual files (in which case only
+those files constitute the covered work).
+
+This file is not itself part of the license under which the covered
+work is distributed; it grants additional permissions directly from
+the author. The file or links to it may be removed or omitted from
+redistributions of the covered work(s) whether or not the option of
+using an alternative license is exercised.
+
+IMPORTANT: If you modify the covered work by incorporating materials
+which are not owned by you, you must remove this file or links to it
+or face possible future liability under section 3.3. Before doing so,
+you may exercise the permission given here to choose an alternative
+license meeting the conditions below. The status of the resulting work
+is determined by the interaction of the resulting license for this
+work, and the license of the additional materials.
+
+If your modifications are all owned by you, then you should remove
+this file or links to it (after substituting your preferred license,
+if applicable) unless you accept all the possible terms and grants of
+rights given in section 3.
+
+This file applies to a work that is originally distributed by its
+author under a permissive license that permits copying, distribution
+and modification in source and binary forms without limitation or
+restrictions other than the requirement to preserve a relevant
+copyright notice, disclaimer of warranty, and limitation of liability.
+The option of relicensing is provided in order to allow the use of the
+work as part of projects under other licenses, without having to deal
+with "license fragmentation" or conflicts. The primary objective here
+is to protect the author's disclaimer of warranty and limitation of
+liability while otherwise allowing unlimited use of the work.
+
+The author grants permission for the covered work to be distributed
+under a license (the "Alternative License") other than the one
+originally attached to the work, subject to the conditions set forth
+below:
+
+1. The Alternative License must not attempt to disclaim, revoke, or
+   abolish the author's original copyright.
+
+2. The Alternative License must require that modification or further
+   redistribution must preserve in source code distributions at least
+   the copyright notice, disclaimer of warranty and limitation of
+   liability. It may otherwise set its own terms for redistriribution.
+
+3. The Alternative License may not include any terms that impose
+   additional duties, obligations or liabilities on the author, or
+   which grant rights from the author under any branch of law other
+   than copyright law, except as follows:
+
+   3.1. The Alternative License may include conditional or
+        unconditional grants of such patent rights as are minimally
+        essential to enable the use, distribution, transfer, sale or
+        offer for sale, and modification of the covered work; and the
+        manufacture, sale or offer for sale, import or transfer of
+        devices containing the covered work. These grants of rights
+        must be limited to such patents, if any, that would be
+        infringed by engaging in such dealings with the author's
+        original unmodified work.
+
+        The GNU GPL version 3 and the Apache License 2.0 may be taken
+        as reference examples of permissible patent grants.
+
+   3.2. The Alternative License may waive the author's moral rights.
+
+   3.3. The Alternative License may include a claim or warranty that
+        the original author possesses the right to license the work,
+        provided that this would not imply the licensing of any right
+        not included in the above subsections or the work's original
+	license.
+
+4. The Alternative License must include a general disclaimer of
+   warranty and limitation of liability that are at least as extensive
+   as the ones contained in the work's original license terms, with
+   the sole exception of section 3.3 above.
+
+5. The author considers all of the following licenses (identified by
+   their SPDX tags) to qualify under these terms as acceptable
+   Alternative Licenses:
+
+   Apache-2.0         [Apache License 2.0]
+   BSD-2-Clause       [BSD 2-clause "Simplified" License]
+   BSL-1.0            [Boost Software License 1.0]
+   GPL-2.0-or-later   [GNU GPL 2.0 or later version]
+   GPL-3.0-or-later   [GNU GPL 3.0 or later version]
+   MIT                [MIT License]
+   PostgreSQL         [PostgreSQL License]
+
+   This list is not intended to be exhaustive.
+
+(end)
