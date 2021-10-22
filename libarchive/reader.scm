@@ -17,7 +17,15 @@
 
   re-export-and-replace:	(close)
 
-  re-export:	(free free-entries new-entry))
+  re-export:	(free
+				 free-entries
+				 new-entry
+				 warning-handler
+				 with-libarchive-warning-handler
+				 libarchive-warning?
+				 libarchive-error?
+				 libarchive-parameter-error?
+				 ))
 
 ;;;
 

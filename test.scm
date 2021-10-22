@@ -17,13 +17,14 @@
  ;; or just (libarchive) in place of the following 3
  (libarchive reader)
  (libarchive writer)
- (libarchive entry))
+ (libarchive entry)
+ (libarchive entry acl))
 
 (define (list-archive filename)
   (let ((archive (make <archive-reader>)))
     (open-filename archive filename)
     (while (next-header archive)
-	  (format #t "filename: ~a: ~a ~a ~a ~a ~a ~o ~o ~a ~a ~a ~a ~a ~a ~d\n"
+	  (format #t "filename: ~a: ~a ~a ~a ~a ~a ~o ~o ~a ~a ~a ~a ~a ~a ~d [~a]\n"
 			  (entry-pathname archive)
 			  (entry-hardlink archive)
 			  (entry-symlink archive)
@@ -39,6 +40,7 @@
 			  (entry-ctime-r archive)
 			  (entry-mtime-r archive)
 			  (entry-size archive)
+			  (entry-acl-to-text archive)
 			  ))
     (close archive)
 	(free archive)))

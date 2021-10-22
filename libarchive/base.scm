@@ -6,6 +6,8 @@
 (define-module (libarchive base)
   use-module:	(oop goops)
   use-module:	(ice-9 exceptions)
+  use-module:	((srfi srfi-71)
+				 select: (unlist))
   use-module:	(system foreign)
   use-module:	((system foreign-object)
 				 select: (make-foreign-object-type))
@@ -26,19 +28,48 @@
 
 				 archive-check-error archive-check-result
 				 archive-check-object archive-check-offset-len
+				 archive-check-entry-error
 
 				 archive-report-error archive-report-parameter-error
+				 archive-report-parameter-warning
+
+				 with-libarchive-warning-handler
+
+				 ;; error types and predicates
+				 libarchive-warning?
+				 libarchive-error?
+				 libarchive-parameter-error?
+
+				 ;; some utilities for FFI interfacing
+				 make-out-param-struct
+				 pointer->maybe-string
+				 maybe-string->pointer
 
 				 <archive-base>
 				 report-error free-entries new-entry
+				 warning-handler
 
 				 <archive-entry-base>
 				 get-entry-ptr
+				 report-entry-error
 				 clone
+				 owner
 
 				 <archive-entry>
 				 free   ;; also for <archive-base>
 				 ))
+
+;;; commonly needed type conversions
+
+(define-inlinable (pointer->maybe-string ptr)
+  (if (null-pointer? ptr)
+	  #f
+	  (pointer->string ptr)))
+
+(define-inlinable (maybe-string->pointer str)
+  (if str
+	  (string->pointer str)
+	  %null-pointer))
 
 ;;; Error handling
 
@@ -70,6 +101,11 @@
 	(report-error self retval))
   retval)
 
+(define-inlinable (archive-check-entry-error self retval)
+  (when (archive-error? retval)
+	(report-entry-error self retval))
+  retval)
+
 ;; here RETVAL is an integer result, such as count of returned bytes,
 ;; with negative values meaning a fatal error
 
@@ -87,13 +123,34 @@
 	(archive-report-parameter-error "access to deallocated object"
 									'archive-check-object self)))
 
+;; error types
+
+(define-exception-type &libarchive-warning &warning
+  make-libarchive-warning
+  libarchive-warning?)
+
+(define-exception-type &libarchive-error &external-error
+  make-libarchive-error
+  libarchive-error?)
+
+(define-exception-type &libarchive-parameter-error &programming-error
+  make-libarchive-parameter-error
+  libarchive-parameter-error?)
+
+(define (with-libarchive-warning-handler handler thunk)
+  (with-exception-handler (lambda (e)
+							(if (libarchive-warning? e)
+								(handler e)
+								(raise-exception e continuable?: #t)))
+						  thunk))
+
 ;; report an error ERROR from ORIGIN without associating it with any
 ;; specific object
 
 (define (archive-report-error str origin)
   (raise-exception
    (make-exception
-	(make-error)
+	(make-libarchive-error)
 	(make-exception-with-origin origin)
 	(make-exception-with-message str))))
 
@@ -102,10 +159,19 @@
 (define (archive-report-parameter-error str origin . irritants)
   (raise-exception
    (make-exception
-	(make-programming-error)
+	(make-libarchive-parameter-error)
 	(make-exception-with-origin origin)
 	(make-exception-with-irritants irritants)
 	(make-exception-with-message str))))
+
+(define (archive-report-parameter-warning str origin . irritants)
+  (raise-exception
+   (make-exception
+	(make-libarchive-warning)
+	(make-exception-with-origin origin)
+	(make-exception-with-irritants irritants)
+	(make-exception-with-message str))
+   continuable?: #t))
 
 ;; check that OFFSET/LEN fall within bounds of a buffer of length
 ;; BUFLEN
@@ -283,6 +349,9 @@
   (libarchive-address)
   (libarchive-ptr	init-value: %null-pointer
 					getter: libarchive-ptr)
+  (warning-handler	init-value: #f
+					init-keyword: #:warning-handler
+					accessor: warning-handler)
   (owned-entries	init-form: (make-weak-key-hash-table)
 					getter: owned-entries))
 
@@ -329,14 +398,64 @@
 	(let* ((archive-ptr (libarchive-ptr self))
 		   (errstr (if (null-pointer? archive-ptr)
 					   "error on deallocated archive object"
-					   (pointer->string (archive:error-string archive-ptr)))))
-	  (raise-exception
-	   (make-exception
-		(if (archive-fatal? retval)
-			(make-external-error)
-			(make-warning))
-		(make-exception-with-irritants (list self))
-		(make-exception-with-message errstr))
-	   continuable?: (not (archive-fatal? retval))))))
+					   (pointer->maybe-string (archive:error-string archive-ptr))))
+		   (cont (and (not (archive-fatal? retval))
+					  (not (null-pointer? archive-ptr))))
+		   (handler (and cont (warning-handler self)))
+		   (exc (make-exception
+				 (if cont
+					 (make-libarchive-warning)
+					 (make-libarchive-error))
+				 (make-exception-with-irritants (list self))
+				 (make-exception-with-message (or errstr "(null)")))))
+	  (if (procedure? handler)
+		  (handler self retval exc)
+		  (raise-exception exc continuable?: cont)))))
+
+;; unfortunately the entry-* functions report errors without
+;; any way to get an error message.
+
+(define-method (report-entry-error (self <archive-entry-base>)
+								   (retval <integer>))
+  (when (archive-error? retval)
+	(let* ((entry-ptr (get-entry-ptr self))
+		   (cont (and (not (archive-fatal? retval))
+					  (not (null-pointer? entry-ptr))))
+		   (exc (make-exception
+				 (if cont
+					 (make-libarchive-warning)
+					 (make-libarchive-error))
+				 (make-exception-with-irritants (list self))
+				 (make-exception-with-message (if cont
+												  "warning on archive_entry_*"
+												  "error on archive_entry_*")))))
+	  (raise-exception exc continuable?: cont))))
+
+;;; memory support for multiple out params
+
+;; the basic idea here is to make a struct containing fields for all
+;; the desired parameters, and then return a pointer to each
+;; individual element. Then we pass those pointers to the function
+;; call, and use parse-c-struct to read out the values it stored in
+;; the elements. Note that the pointer to the first element is always
+;; the same thing as the pointer to the whole struct.
+
+(define-inlinable (align off alignment)
+  (1+ (logior (1- off) (1- alignment))))
+
+(define (make-out-param-struct types vals)
+  (assert (pair? types))
+  (let* ((struct (make-c-struct types vals))
+		 (addr (pointer-address struct)))
+	(let loop ((offset 0)
+			   (ptrs '())
+			   (types types))
+	  (if (null? types)
+		  (unlist (reverse ptrs))
+		  (let* ((type (car types))
+				 (newpos (align offset (alignof type))))
+			(loop (+ newpos (sizeof type))
+				  (cons (make-pointer (+ addr newpos)) ptrs)
+				  (cdr types)))))))
 
 ;; end

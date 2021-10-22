@@ -9,6 +9,8 @@
   use-module: (rnrs bytevectors)
   use-module: (ice-9 regex)
   use-module: (srfi srfi-11)
+  use-module: ((srfi srfi-71)
+			   select: (unlist))
   use-module: (libarchive base)
 
   export: (entry-fflags
@@ -17,7 +19,11 @@
 
   re-export: (<archive-entry>
 			  free
-			  clone))
+			  clone
+			  with-libarchive-warning-handler
+			  libarchive-warning?
+			  libarchive-error?
+			  libarchive-parameter-error?))
 
 ;;;
 
@@ -28,16 +34,6 @@
 	  (with-entry-ptr self
 		(result-conv (internal-name entry-ptr))))
 	(export method-name)))
-
-(define-inlinable (pointer->maybe-string ptr)
-  (if (null-pointer? ptr)
-	  #f
-	  (pointer->string ptr)))
-
-(define-inlinable (maybe-string->pointer str)
-  (if str
-	  (string->pointer str)
-	  %null-pointer))
 
 ;; would use identity, but it can't be inlined
 (define-inlinable (no-conversion x) x)
@@ -68,25 +64,27 @@
   (case (logand x #o170000)
 	((#o000000) 'hardlink)
 	((#o010000) 'fifo)
-	((#o020000) 'cdev)
-	((#o040000) 'dir)
-	((#o060000) 'bdev)
-	((#o100000) 'file)
-	((#o120000) 'link)
-	((#o140000) 'sock)
+	((#o020000) 'char-special)
+	((#o040000) 'directory)
+	((#o060000) 'block-special)
+	((#o100000) 'regular)
+	((#o120000) 'symlink)
+	((#o140000) 'socket)
 	(else => no-conversion)))
 
 (define (symbol->filetype x)
   (case x
 	((hardlink) #o000000)
 	((fifo) #o010000)
-	((cdev) #o020000)
-	((dir) #o040000)
-	((bdev) #o060000)
-	((file) #o100000)
-	((link) #o120000)
-	((sock) #o140000)
-	(else (error "unknown filetype" x))))
+	((char-special) #o020000)
+	((directory) #o040000)
+	((block-special) #o060000)
+	((regular) #o100000)
+	((symlink) #o120000)
+	((socket) #o140000)
+	(else (archive-report-parameter-error "unknown filetype"
+										  'symbol->filetype
+										  x))))
 
 (define-entry-getter entry-pathname	archive:entry-pathname	'* pointer->string)
 (define-entry-getter entry-hardlink	archive:entry-hardlink	'* pointer->maybe-string)
@@ -138,17 +136,15 @@
 
 (define-libarchive-fn void archive:entry-fflags '* '* '*)
 
-(define %ulong-struct (list unsigned-long))
+(define %2ulong-struct (list unsigned-long unsigned-long))
 
 ;; returns 2 results: setflags, clrflags
 
 (define-method (entry-fflags (self <archive-entry-base>))
   (with-entry-ptr self
-	(let* ((setfl (make-c-struct %ulong-struct (list 0)))
-		   (clrfl (make-c-struct %ulong-struct (list 0))))
+	(let-values (((setfl clrfl) (make-out-param-struct %2ulong-struct (list 0 0))))
 	  (archive:entry-fflags entry-ptr setfl clrfl)
-	  (values (car (parse-c-struct setfl %ulong-struct))
-			  (car (parse-c-struct clrfl %ulong-struct))))))
+	  (unlist (parse-c-struct setfl %2ulong-struct)))))
 
 ;;; Mutators
 
@@ -169,7 +165,7 @@
 (define-entry-setter entry-set-gname archive:entry-copy-gname (arg <string> '* maybe-string->pointer))
 (define-entry-setter entry-set-uname archive:entry-copy-uname (arg <string> '* maybe-string->pointer))
 
-;; this one has an error return
+;; this one has a continuable error return
 (define-libarchive-fn '* archive:entry-copy-fflags-text '* '*)
 
 (define-method (entry-set-fflags-text (self <archive-entry>) (arg <string>))
@@ -177,11 +173,14 @@
 	(let* ((str (string->pointer arg))
 		   (rstr (archive:entry-copy-fflags-text entry-ptr str)))
 	  (unless (null-pointer? rstr)
-		(archive-report-parameter-error "bad fflags"
-										'entry-set-fflags-text
-										(- (pointer-address rstr) (pointer-address str))
-										arg
-										(pointer->string rstr))))))
+		(let ((rstring (pointer->string rstr)))
+		  (archive-report-parameter-warning "unknown or invalid fflag"
+											'entry-set-fflags-text
+											(car (string-split rstring #\,))
+											(- (pointer-address rstr) (pointer-address str))
+											arg
+											rstring
+											self))))))
 
 (define-entry-setter entry-unset-birthtime archive:entry-unset-birthtime)
 (define-entry-setter entry-unset-atime archive:entry-unset-atime)
