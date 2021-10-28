@@ -34,6 +34,8 @@
 		   entry-acl-to-text
 
 		   entry-acl-clear
+		   entry-acl-from-text
+		   entry-acl-add-entry
 		   )
   )
 
@@ -205,7 +207,7 @@
 
 (define-method (entry-acl-to-text (self <archive-entry-base>) (style <archive-entry-acl-styles>))
   (with-entry-ptr self
-	(pointer->maybe-string (archive:entry-acl-reset entry-ptr (as-number style)))))
+	(pointer->maybe-string (archive:entry-acl-to-text entry-ptr %null-pointer (as-number style)))))
 
 (define-method (entry-acl-to-text (self <archive-entry-base>) . styles)
   (entry-acl-to-text self (flaglist->number styles (universe <archive-entry-acl-styles>))))
@@ -230,5 +232,22 @@
 
 (define-method (entry-acl-from-text (self <archive-entry>) (acl <string>) (type <archive-entry-acl-types>))
   (entry-acl-from-text self acl (as-number type)))
+
+(define-libarchive-fn int archive:entry-acl-add-entry '* int int int int '*)
+
+(define-method (entry-acl-add-entry (self <archive-entry>)
+									(type <archive-entry-acl-types>)
+									(permset <archive-entry-acl-permset>)
+									(tag <symbol>)
+									(qual <integer>)
+									(name <string>))
+  (with-entry-ptr self
+	(archive-check-entry-error self
+							   (archive:entry-acl-add-entry self
+															(as-number type)
+															(as-number permset)
+															(acltag->number tag)
+															qual
+															(maybe-string->pointer name)))))
 
 ;; end

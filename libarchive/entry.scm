@@ -47,7 +47,7 @@
 ;;
 ;; (though libarchive 4.x will supposedly remove the use of mode_t)
 
-(define-values (time_t mode_t)
+(define-values (time_t mode_t dev_t)
   (let ((m (string-match "^([^-]+)-[^-]*-([^0-9-]+).*$" %host-type)))
 	(unless m (error "can't parse %host-type"))
 	(let ((arch (string->symbol (match:substring m 1)))
@@ -58,11 +58,14 @@
 				(else long))
 			  (case os
 				((freebsd darwin) uint16)
+				(else uint32))
+			  (case os
+				((linux) uint64)
 				(else uint32))))))
 
 (define (filetype->symbol x)
   (case (logand x #o170000)
-	((#o000000) 'hardlink)
+	((#o000000) 'notype)
 	((#o010000) 'fifo)
 	((#o020000) 'char-special)
 	((#o040000) 'directory)
@@ -74,7 +77,7 @@
 
 (define (symbol->filetype x)
   (case x
-	((hardlink) #o000000)
+	((hardlink notype) #o000000)
 	((fifo) #o010000)
 	((char-special) #o020000)
 	((directory) #o040000)
@@ -98,6 +101,7 @@
 (define-entry-getter entry-size-is-set archive:entry-size-is-set	int nonzero?)
 
 (define-entry-getter entry-nlink	archive:entry-nlink		unsigned-int no-conversion)
+(define-entry-getter entry-dev		archive:entry-dev		dev_t no-conversion)
 (define-entry-getter entry-ino		archive:entry-ino64		int64 no-conversion)
 (define-entry-getter entry-uid		archive:entry-uid		int64 no-conversion)
 (define-entry-getter entry-gid		archive:entry-gid		int64 no-conversion)
@@ -205,6 +209,7 @@
 (define-entry-setter entry-unset-size	archive:entry-unset-size)
 
 (define-entry-setter entry-set-nlink	archive:entry-set-nlink	(arg <integer> unsigned-int no-conversion))
+(define-entry-setter entry-set-dev		archive:entry-set-dev	(arg <integer> dev_t no-conversion))
 (define-entry-setter entry-set-ino		archive:entry-set-ino64	(arg <integer> int64 no-conversion))
 (define-entry-setter entry-set-uid		archive:entry-set-uid	(arg <integer> int64 no-conversion))
 (define-entry-setter entry-set-gid		archive:entry-set-gid	(arg <integer> int64 no-conversion))

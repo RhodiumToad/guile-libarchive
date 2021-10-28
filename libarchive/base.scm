@@ -6,6 +6,10 @@
 (define-module (libarchive base)
   use-module:	(oop goops)
   use-module:	(ice-9 exceptions)
+  use-module:	(ice-9 optargs)		;; let-keywords
+  use-module:	(srfi srfi-1)		;; list lib
+  use-module:	(srfi srfi-11)		;; let-values
+  use-module:	(srfi srfi-26)		;; cut
   use-module:	((srfi srfi-71)
 				 select: (unlist))
   use-module:	(system foreign)
@@ -57,6 +61,10 @@
 
 				 <archive-entry>
 				 free   ;; also for <archive-base>
+
+				 <archive-entry-linkresolver>
+				 set-strategy
+				 linkify
 				 ))
 
 ;;; commonly needed type conversions
@@ -243,6 +251,8 @@
 		(finalfn (make-pointer addr))))))
 
 (define-generic free)
+(define-generic disown)
+(define-generic reown)
 
 (define-syntax-rule (define-foreign-object-address-type name finalfn)
   (begin
@@ -255,6 +265,17 @@
 							specializers: (list type)
 							formals: '(self)
 							procedure: fnz))
+		(add-method! disown (make <method>
+							  specializers: (list type)
+							  formals: '(self)
+							  procedure: (lambda (self)
+										   (let ((oaddr (struct-ref/unboxed self 0)))
+											 (struct-set!/unboxed self 0 0)
+											 oaddr))))
+		(add-method! reown (make <method>
+							 specializers: (list type <integer>)
+							 formals: '(self)
+							 procedure: (lambda (self addr) (struct-set!/unboxed self 0 addr))))
 		type))))
 
 ;;;
@@ -328,6 +349,26 @@
 	  (slot-set! self 'owner-slot #f)
       (free addr))))
 
+(define-method (disown (self <archive-entry>))
+  (disown (slot-ref self 'entry-address)))
+
+;; If we were explicitly freed while disowned, we have a problem; we
+;; need to take back ownership to avoid leaking memory, but the entry
+;; might have a dangling pointer to the archive that formerly owned
+;; it. The safest bet is to do the explicit free that was avoided due
+;; to the disown.
+
+(define-method (reown (self <archive-entry>) (addr <integer>))
+  (let* ((entry-ptr (get-entry-ptr self))
+		 (entry-addr (pointer-address entry-ptr)))
+	(assert (or (null-pointer? entry-ptr) (= addr entry-addr)))
+	(cond
+	 ((null-pointer? entry-ptr)
+	  (reown (slot-ref self 'entry-address) addr)
+	  (free (slot-ref self 'entry-address)))
+	 (else
+	  (reown (slot-ref self 'entry-address) entry-addr)))))
+
 (define-libarchive-fn	'*		archive:entry-clone '*)
 
 (define-method (clone (self <archive-entry-base>))
@@ -381,6 +422,12 @@
 
 (define-method (new-entry (self <archive-base>))
   (make <archive-entry> owner: self))
+
+(define-libarchive-fn int archive:format '*)
+
+(define-method (format-as-number (self <archive-base>))
+  (with-archive-ptr self
+	(archive:format archive-ptr)))
 
 ;; close not defined here, since it varies between derived classes,
 ;; but we centralize the generic creation here
@@ -457,5 +504,111 @@
 			(loop (+ newpos (sizeof type))
 				  (cons (make-pointer (+ addr newpos)) ptrs)
 				  (cdr types)))))))
+
+;;; linkresolver
+
+;; this is in this file mostly to avoid needing to export the memory
+;; management functions
+
+(define-libarchive-fn	'*		archive:entry-linkresolver-new)
+(define-libarchive-fn	void	archive:entry-linkresolver-set-strategy '* int)
+(define-libarchive-fn	void	archive:entry-linkresolver-free '*)
+
+(define-foreign-object-address-type <archive-entry-linkresolver-address>
+  archive:entry-linkresolver-free)
+
+(define-class <archive-entry-linkresolver> (<object>)
+  (linkresolver-address)
+  (linkresolver-slot	init-value: %null-pointer
+						getter: get-linkresolver-ptr)
+  (owned-entries		init-form: (make-hash-table)
+						getter: owned-entries))
+
+(define-method (initialize (self <archive-entry-linkresolver>) initargs)
+  (let-keywords initargs #t ((strategy #f))
+	(next-method)
+	(let* ((ptr (archive:entry-linkresolver-new)))
+	  (when (null-pointer? ptr)
+		(archive-report-error "error" 'archive:entry-linkresolver-new))
+	  (slot-set! self 'linkresolver-slot ptr)
+	  (slot-set! self 'linkresolver-address
+				 (make <archive-entry-linkresolver-address>
+				   address: (pointer-address ptr)))
+	  (when strategy
+		(let ((fmt (if (integer? strategy)
+					   strategy
+					   (format-as-number strategy))))
+		  (archive:entry-linkresolver-set-strategy ptr fmt))))))
+
+(define-method (set-strategy (self <archive-entry-linkresolver>)
+							 (strategy <integer>))
+  (let ((ptr (get-linkresolver-ptr self)))
+	(archive-check-object self (null-pointer? ptr))
+  	(archive:entry-linkresolver-set-strategy ptr strategy)))
+
+(define-method (set-strategy (self <archive-entry-linkresolver>)
+							 (strategy <archive-base>))
+  (set-strategy self (format-as-number strategy)))
+
+(define-method (free (self <archive-entry-linkresolver>))
+  (let ((ptr (get-linkresolver-ptr self))
+		(addr (slot-ref self 'linkresolver-address)))
+	(hash-clear! (owned-entries self))
+	(unless (null-pointer? ptr)
+	  (slot-set! self 'linkresolver-slot %null-pointer)
+      (free addr))))
+
+(define-method (entry-internalize (self <archive-entry-linkresolver>)
+								  (entry <archive-entry>))
+  (let ((addr (disown entry)))
+	(hashv-set! (owned-entries self) addr entry)))
+
+(define-method (entry-externalize-fold (self <archive-entry-linkresolver>)
+									   candidate-entry
+									   candidate-ptr
+									   entry-ptr
+									   seed)
+  (cond
+   ((null-pointer? entry-ptr) seed)
+   ((equal? entry-ptr candidate-ptr)
+	(cons candidate-entry seed))
+   (else
+	(let* ((entries (owned-entries self))
+		   (addr (pointer-address entry-ptr))
+		   (entry (hashv-ref entries addr)))
+	  (assert entry)
+	  (reown entry addr)
+	  (hashv-remove! entries addr)
+	  (cons entry seed)))))
+
+(define-libarchive-fn	void	archive:entry-linkify '* '* '*)
+
+(define %linkify-struct (list '* '*))
+
+(define-method (linkify (self <archive-entry-linkresolver>)
+						(entry <archive-entry>))
+  (let ((linkresolver-ptr (get-linkresolver-ptr self)))
+  	(archive-check-object self (null-pointer? linkresolver-ptr))
+	(with-entry-ptr entry
+	  (let*-values (((entry1 entry2)
+					 (make-out-param-struct %linkify-struct (list entry-ptr %null-pointer))))
+		(archive:entry-linkify linkresolver-ptr entry1 entry2)
+		(let ((results (parse-c-struct entry1 %linkify-struct)))
+		  (unless (member entry-ptr results)
+			(entry-internalize self entry))
+		  (fold-right (cut entry-externalize-fold self entry entry-ptr <> <>)
+					  '()
+					  results))))))
+
+(define-method (linkify (self <archive-entry-linkresolver>))
+  (let ((linkresolver-ptr (get-linkresolver-ptr self)))
+  	(archive-check-object self (null-pointer? linkresolver-ptr))
+	(let*-values (((entry1 entry2)
+				   (make-out-param-struct %linkify-struct (list %null-pointer %null-pointer))))
+	  (archive:entry-linkify linkresolver-ptr entry1 entry2)
+	  (let ((results (parse-c-struct entry1 %linkify-struct)))
+		(fold-right (cut entry-externalize-fold self #f #f <> <>)
+					'()
+					results)))))
 
 ;; end
