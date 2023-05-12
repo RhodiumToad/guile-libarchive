@@ -562,7 +562,7 @@
   (let ((ptr (get-linkresolver-ptr self))
 		(addr (slot-ref self 'linkresolver-address)))
 	(let ((entries (hash-map->list (lambda (k v) k) (owned-entries self))))
-	  (for-each free entries)))
+	  (for-each free entries))
 	(hash-clear! (owned-entries self))
 	(unless (null-pointer? ptr)
 	  (slot-set! self 'linkresolver-slot %null-pointer)
