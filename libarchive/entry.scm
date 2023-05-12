@@ -89,7 +89,7 @@
 										  'symbol->filetype
 										  x))))
 
-(define-entry-getter entry-pathname	archive:entry-pathname	'* pointer->string)
+(define-entry-getter entry-pathname	archive:entry-pathname	'* pointer->maybe-string)
 (define-entry-getter entry-hardlink	archive:entry-hardlink	'* pointer->maybe-string)
 (define-entry-getter entry-symlink	archive:entry-symlink	'* pointer->maybe-string)
 (define-entry-getter entry-uname	archive:entry-uname		'* pointer->maybe-string)
@@ -152,22 +152,49 @@
 
 ;;; Mutators
 
-(define-syntax-rule (define-entry-setter method-name internal-name (argname param-type internal-type param-conv) ...)
+(define-syntax-rule (define-entry-setter method-name (internal-name internal-type ...)
+					  ((argname param-type param-conv) ...) ...)
   (begin
 	(define-libarchive-fn void internal-name '* internal-type ...)
 	(define-method (method-name (self <archive-entry>) (argname param-type) ...)
 	  (with-entry-ptr self
-		(internal-name entry-ptr (param-conv argname) ...)))
+		(internal-name entry-ptr (param-conv argname) ...))) ...
 	(export method-name)))
 
-(define-entry-setter entry-set-hardlink archive:entry-copy-hardlink (arg <string> '* maybe-string->pointer))
-(define-entry-setter entry-set-link archive:entry-copy-link (arg <string> '* maybe-string->pointer))
-(define-entry-setter entry-set-pathname archive:entry-copy-pathname (arg <string> '* maybe-string->pointer))
-(define-entry-setter entry-set-sourcepath archive:entry-copy-sourcepath (arg <string> '* maybe-string->pointer))
-(define-entry-setter entry-set-symlink archive:entry-copy-symlink (arg <string> '* maybe-string->pointer))
+(define-entry-setter entry-set-hardlink
+  (archive:entry-copy-hardlink '*)
+  ((arg <string> string->pointer))
+  ((arg <boolean> convert-null-string)))
 
-(define-entry-setter entry-set-gname archive:entry-copy-gname (arg <string> '* maybe-string->pointer))
-(define-entry-setter entry-set-uname archive:entry-copy-uname (arg <string> '* maybe-string->pointer))
+(define-entry-setter entry-set-link
+  (archive:entry-copy-link '*)
+  ((arg <string> string->pointer))
+  ((arg <boolean> convert-null-string)))
+
+(define-entry-setter entry-set-pathname
+  (archive:entry-copy-pathname '*)
+  ((arg <string> string->pointer))
+  ((arg <boolean> convert-null-string)))
+
+(define-entry-setter entry-set-sourcepath
+  (archive:entry-copy-sourcepath '*)
+  ((arg <string> string->pointer))
+  ((arg <boolean> convert-null-string)))
+
+(define-entry-setter entry-set-symlink
+  (archive:entry-copy-symlink '*)
+  ((arg <string> string->pointer))
+  ((arg <boolean> convert-null-string)))
+
+(define-entry-setter entry-set-gname
+  (archive:entry-copy-gname '*)
+  ((arg <string> string->pointer))
+  ((arg <boolean> convert-null-string)))
+
+(define-entry-setter entry-set-uname
+  (archive:entry-copy-uname '*)
+  ((arg <string> string->pointer))
+  ((arg <boolean> convert-null-string)))
 
 ;; this one has a continuable error return
 (define-libarchive-fn '* archive:entry-copy-fflags-text '* '*)
@@ -186,14 +213,22 @@
 											rstring
 											self))))))
 
-(define-entry-setter entry-unset-birthtime archive:entry-unset-birthtime)
-(define-entry-setter entry-unset-atime archive:entry-unset-atime)
-(define-entry-setter entry-unset-ctime archive:entry-unset-ctime)
-(define-entry-setter entry-unset-mtime archive:entry-unset-mtime)
+(define-method (entry-set-fflags-text (self <archive-entry>) (arg <boolean>))
+  (unless (not arg)
+	(archive-report-parameter-error "invalid string value"
+									'entry-set-fflags-text
+									arg))
+  (entry-set-fflags-text self ""))
+
+(define-entry-setter entry-unset-birthtime (archive:entry-unset-birthtime) ())
+(define-entry-setter entry-unset-atime (archive:entry-unset-atime) ())
+(define-entry-setter entry-unset-ctime (archive:entry-unset-ctime) ())
+(define-entry-setter entry-unset-mtime (archive:entry-unset-mtime) ())
 
 (define-syntax-rule (define-entry-time-setters method-name internal-name)
   (begin
-	(define-entry-setter method-name internal-name (sec <integer> time_t no-conversion) (nsec <integer> long no-conversion))
+	(define-entry-setter method-name (internal-name time_t long)
+	  ((sec <integer> no-conversion) (nsec <integer> no-conversion)))
 	(define-method (method-name (self <archive-entry>) (arg <real>))
 	  (let*-values (((time) (floor (* (inexact->exact arg)
 									  1000000000)))
@@ -205,20 +240,44 @@
 (define-entry-time-setters entry-set-ctime archive:entry-set-ctime)
 (define-entry-time-setters entry-set-mtime archive:entry-set-mtime)
 
-(define-entry-setter entry-set-size		archive:entry-set-size	(arg <integer> int64 no-conversion))
-(define-entry-setter entry-unset-size	archive:entry-unset-size)
+(define-entry-setter entry-set-size
+  (archive:entry-set-size int64)
+  ((arg <integer> no-conversion)))
 
-(define-entry-setter entry-set-nlink	archive:entry-set-nlink	(arg <integer> unsigned-int no-conversion))
-(define-entry-setter entry-set-dev		archive:entry-set-dev	(arg <integer> dev_t no-conversion))
-(define-entry-setter entry-set-ino		archive:entry-set-ino64	(arg <integer> int64 no-conversion))
-(define-entry-setter entry-set-uid		archive:entry-set-uid	(arg <integer> int64 no-conversion))
-(define-entry-setter entry-set-gid		archive:entry-set-gid	(arg <integer> int64 no-conversion))
+(define-entry-setter entry-unset-size	(archive:entry-unset-size) ())
+
+(define-entry-setter entry-set-nlink
+  (archive:entry-set-nlink unsigned-int)
+  ((arg <integer> no-conversion)))
+
+(define-entry-setter entry-set-dev
+  (archive:entry-set-dev dev_t)
+  ((arg <integer> no-conversion)))
+
+(define-entry-setter entry-set-ino
+  (archive:entry-set-ino64 int64)
+  ((arg <integer> no-conversion)))
+
+(define-entry-setter entry-set-uid
+  (archive:entry-set-uid int64)
+  ((arg <integer> no-conversion)))
+
+(define-entry-setter entry-set-gid
+  (archive:entry-set-gid int64)
+  ((arg <integer> no-conversion)))
 
 ;; watch out for possible change from mode_t to int
-(define-entry-setter entry-set-perm		archive:entry-set-perm	(arg <integer> mode_t no-conversion))
-(define-entry-setter entry-set-mode		archive:entry-set-mode	(arg <integer> mode_t no-conversion))
+(define-entry-setter entry-set-perm
+  (archive:entry-set-perm mode_t)
+  ((arg <integer> no-conversion)))
 
-(define-entry-setter entry-set-filetype	archive:entry-set-filetype (arg <integer> unsigned-int no-conversion))
+(define-entry-setter entry-set-mode
+  (archive:entry-set-mode mode_t)
+  ((arg <integer> no-conversion)))
+
+(define-entry-setter entry-set-filetype
+  (archive:entry-set-filetype unsigned-int)
+  ((arg <integer> no-conversion)))
 
 (define-method (entry-set-filetype (self <archive-entry>) (arg <symbol>))
   (entry-set-filetype self (symbol->filetype arg)))

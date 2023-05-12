@@ -248,6 +248,36 @@
 															(as-number permset)
 															(acltag->number tag)
 															qual
-															(maybe-string->pointer name)))))
+															(string->pointer name)))))
+
+(define-method (entry-acl-add-entry (self <archive-entry>)
+									(type <archive-entry-acl-types>)
+									(permset <archive-entry-acl-permset>)
+									(tag <symbol>)
+									(qual <integer>)
+									(name <boolean>))
+  (with-entry-ptr self
+	(archive-check-entry-error self
+							   (archive:entry-acl-add-entry self
+															(as-number type)
+															(as-number permset)
+															(acltag->number tag)
+															qual
+															(convert-null-string name)))))
+
+(define-method (entry-acl-add-entry (self <archive-entry>)
+									(type <archive-entry-acl-types>)
+									(permset <archive-entry-acl-permset>)
+									(tag <symbol>)
+									(qual <integer>))
+  (entry-acl-add-entry self type permset tag qual #f))
+
+(define-method (entry-acl-add-entry (self <archive-entry>)
+									(type <archive-entry-acl-types>)
+									(permset <archive-entry-acl-permset>)
+									(tag <symbol>)
+									(name <string>))
+  (entry-acl-add-entry self type permset tag qual -1 name))
+
 
 ;; end

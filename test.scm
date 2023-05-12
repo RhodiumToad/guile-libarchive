@@ -75,6 +75,7 @@
 		(entry-set-atime newhdr now)
 		(entry-set-ctime newhdr now)
 		(entry-set-mtime newhdr now)
+		(entry-set-fflags-text newhdr #f)
 		(write-header out-archive newhdr)
 		(do ((bufcount (read-data archive databuf)
 					   (read-data archive databuf)))
