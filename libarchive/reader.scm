@@ -13,6 +13,8 @@
 				 open-filename
 				 next-header
 				 read-data
+				 set-format-support
+				 set-filter-support
 				 )
 
   re-export-and-replace:	(close)
@@ -43,13 +45,21 @@
 (define-libarchive-fn	int		archive:read-support-filter-all '*)
 (define-libarchive-fn	int		archive:read-support-format-all '*)
 
+(define-method (set-format-support (self <archive-reader>))
+  (with-archive-ptr self
+	(archive-check-error self (archive:read-support-format-all archive-ptr))))
+
+(define-method (set-filter-support (self <archive-reader>))
+  (with-archive-ptr self
+	(archive-check-error self (archive:read-support-filter-all archive-ptr))))
+
 (define-method (initialize (self <archive-reader>) initargs)
   (next-method)
   (slot-set! self 'owner-slot self)
   ;; todo: add a keyword to turn off universal support?
-  (with-archive-ptr self
-	(archive-check-error self (archive:read-support-format-all archive-ptr))
-	(archive-check-error self (archive:read-support-filter-all archive-ptr))))
+  ;; regardless, we must not do these for all derived classes
+  (set-format-support self)
+  (set-filter-support self))
 
 (define-method (free (self <archive-reader>))
   (slot-set! self 'entry-slot %null-pointer)
