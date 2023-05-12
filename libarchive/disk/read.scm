@@ -33,6 +33,9 @@
 				 libarchive-warning?
 				 libarchive-error?
 				 libarchive-parameter-error?
+				 <archive-entry-linkresolver>
+				 set-strategy
+				 linkify
 				 ;; from reader
 				 open-filename
 				 next-header
